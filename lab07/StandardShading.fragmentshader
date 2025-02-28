@@ -1,0 +1,225 @@
+#version 330 core
+
+// Interpolated values from the vertex shaders
+in vec2 vertex_UV;
+in vec2 vertex_UV_scaled;
+
+in vec4 vertex_position_cameraspace;
+in vec4 vertex_normal_cameraspace;
+in vec4 light_position_cameraspace;
+in vec4 vertex_position_lightspace;
+in vec3 vertex_position_worldspace;
+
+
+uniform int useTexture;
+uniform int swap;
+uniform int cartoonish = 0;
+
+uniform sampler2D GrassSampler;
+uniform sampler2D MoonSampler;
+uniform sampler2D MushroomSampler;
+uniform sampler2D MushroomSampler2;
+uniform sampler2D MushroomSampler3;
+uniform sampler2D KormosSampler;
+uniform sampler2D CloudSampler;
+uniform sampler2D CatSamplerDiff;
+uniform sampler2D shadowMapSampler;
+uniform sampler2D PlanetSampler;
+uniform sampler2D DweSampler;
+
+//light
+struct Light {
+    vec4 La;
+    vec4 Ld;
+    vec4 Ls;
+    vec3 lightPosition_worldspace;
+    float power;
+    vec4 lcolor;
+};
+
+// materials
+struct Material {
+    vec4 Ka;
+    vec4 Kd;
+    vec4 Ks;
+    float Ns;
+};
+
+uniform Light light;
+uniform Material mtl;
+
+// Output data
+out vec4 fragmentColor;
+
+
+void phong(float visibility,float swap);
+float ShadowCalculation(vec4 fragPositionLightspace, sampler2D shadowMapSampler);
+float cartoonLike(float x);
+
+void main() {
+    float shadow  = ShadowCalculation(vertex_position_lightspace,shadowMapSampler);
+    float visibility = 1.0f-shadow;
+    phong(visibility,swap);
+}
+
+float ShadowCalculation(vec4 fragPositionLightspace, sampler2D shadowMapSampler) {
+    // Given the position of a fragment in lightspace coordinates
+    // We sample the depth buffer to see whether or not the fragment is shadowed
+    
+    float shadow;
+
+    // Task 4.3
+
+    // Perspective devide to bring coordinates in range[-1, 1]
+    vec3 projCoords = fragPositionLightspace.xyz  / fragPositionLightspace.w;
+
+    // Since the depth map values are in range[0, 1]
+    projCoords = 0.5 * projCoords + 0.5;
+
+    // Sampling the closest point in this position from the depth map
+    // REMINDER: Since we are in lightspace coordinates,
+    //           the z parameter is the depth from the camera
+    float closestDepth = texture(shadowMapSampler, projCoords.xy).r;
+
+    // Then we get the depth of the current vertex
+    float currentDepth = projCoords.z;
+
+    // If the currentDepth is larger than the closestDepth, the fragment is shadowed
+    shadow = currentDepth > closestDepth ? 1.0 : 0.0;
+
+
+    // Task 4.4
+    // Correcting the quantization problem
+    float bias = 0.05;
+    shadow = currentDepth > closestDepth + bias ? 1.0 : 0.0;
+        
+        
+    // Task 4.6 Make the shadow edges more realistic
+    shadow = 0.0;
+    vec2 depthMap_dimensions = textureSize(shadowMapSampler, 0);
+    vec2 texelSize = 1.0 / depthMap_dimensions;
+    for(int x = -1; x <= 1; x++ ){
+        for(int y = -1; y <= 1; y++ ){
+            float pcfDepth = texture(shadowMapSampler, projCoords.xy + vec2(x, y) * texelSize).r;
+            shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
+           }
+    }
+    
+    shadow /= 2.0;
+    // Task 4.5
+    if(projCoords.z > 1){
+        shadow = 0.0;
+    }
+     
+    return shadow;
+
+}
+
+void phong(float visibility, float swap) {
+    vec4 _Ks = mtl.Ks;
+    vec4 _Kd = mtl.Kd;
+    vec4 _Ka = mtl.Ka;
+    float _Ns = mtl.Ns;
+    float moon = 1;
+    // use texture for materials
+    if (useTexture == 1) {
+        _Ka = vec4(texture(GrassSampler, vertex_UV_scaled).rgb, 1.0);
+        _Kd = vec4(texture(GrassSampler, vertex_UV_scaled).rgb, 1.0);
+        _Ks = vec4(0.5 * _Kd.rgb, _Kd.a);
+        _Ns = 10;
+    }
+    else if (useTexture == 2) {
+        _Ka = vec4(texture(CatSamplerDiff, vertex_UV).rgb, 0.5);
+        _Kd = vec4(texture(CatSamplerDiff, vertex_UV).rgb, 0.5);
+        _Ks = vec4(0.5 * _Kd.rgb, _Ka.a);
+        _Ns = 10;
+    }
+    else if (useTexture == 3) {
+        _Ka = vec4(texture(KormosSampler, vertex_UV).rgb, 0.5);
+        _Kd = vec4(texture(KormosSampler, vertex_UV).rgb, 0.5);
+        _Ks = vec4(0.5 * _Kd.rgb, _Ka.a);
+        _Ns = 10;
+    }
+    
+    else if (useTexture == 4) {
+        _Ka = vec4(texture(MushroomSampler, vertex_UV).rgb, 0.5);
+        _Kd = vec4(texture(MushroomSampler, vertex_UV).rgb, 0.5);
+        _Ks = vec4(0.5 * _Kd.rgb, _Ka.a);
+        _Ns = 10;
+    }
+    else if (useTexture == 5) {
+        _Ka = vec4(texture(MushroomSampler2, vertex_UV).rgb, 0.5);
+        _Kd = vec4(texture(MushroomSampler2, vertex_UV).rgb, 0.5);
+        _Ks = vec4(0.5 * _Kd.rgb, _Ka.a);
+        _Ns = 10;
+    }
+    else if (useTexture == 6) {
+        _Ka = vec4(texture(MushroomSampler3, vertex_UV).rgb, 0.5);
+        _Kd = vec4(texture(MushroomSampler3, vertex_UV).rgb, 0.5);
+        _Ks = vec4(0.5 * _Kd.rgb, _Ka.a);
+        _Ns = 10;
+    }
+   else if (useTexture == 7) {
+        _Ka = vec4(texture(DweSampler, vertex_UV).rgb, 0.5);
+        _Kd = vec4(texture(DweSampler, vertex_UV).rgb, 0.5);
+        _Ks = vec4(0.5 * _Kd.rgb, _Ka.a);
+        _Ns = 10;
+    }
+   
+    // model ambient intensity (Ia)
+    vec4 Ia = light.La * _Ka;
+
+    // model diffuse intensity (Id)
+    vec4 N = swap*normalize(vertex_normal_cameraspace);
+    vec4 L = normalize(light_position_cameraspace - vertex_position_cameraspace);
+    float cosTheta = clamp(dot(N,L), 0, 1);
+    vec4 Id = light.Ld * _Kd * cosTheta;
+
+    // model specular intensity (Is)
+    vec4 R = reflect(-L, N);
+    vec4 E = normalize(vec4(0, 0, 0, 1)- vertex_position_cameraspace);
+    float cosAlpha = clamp(dot(E, R), 0, 1);
+    float specular_factor = pow(cosAlpha, _Ns);
+    vec4 Is = light.Ls * _Ks * specular_factor;
+   
+    //model the light distance effect
+    float distance = length(light.lightPosition_worldspace- vertex_position_worldspace);
+    float distance_sq = distance * distance;
+    float k = 1 / light.power;
+  
+    float attenuation = 1 / (1 + k * (distance_sq));
+    
+    Id *= attenuation;
+    Is *= attenuation;
+    
+   fragmentColor = (Id* visibility + Ia + Is* visibility);
+    
+   if (cartoonish == 1){
+        fragmentColor.x =cartoonLike(fragmentColor.x);
+        fragmentColor.y =cartoonLike(fragmentColor.y);
+        fragmentColor.z =cartoonLike(fragmentColor.z);
+    }
+    
+}
+
+float cartoonLike(float x){
+    if (x > 0.0 && x < 0.25 ){
+        return x = 0.0;
+    }
+   
+    else if (x > 0.25 && x < 0.5){
+         return x = 0.3;
+    }
+    else if (x > 0.5 && x <0.75 ){
+         return x = 0.6;
+    }
+    else if (x > 0.75 && x < 1.0 ){
+        return  x = 1.0;
+    
+    }
+
+}
+
+
+
+
